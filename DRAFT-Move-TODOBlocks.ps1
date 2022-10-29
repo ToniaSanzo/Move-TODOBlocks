@@ -96,6 +96,7 @@ else
 
             if($inTODO)
             {
+                Write-Host "Have to figure out how to delete {$line} here." -ForegroundColor Blue 
                 Out-File -FilePath "C:\Users\sanzo\OneDrive\Desktop\C++\Sandbox\Sandbox\src\TODO.shelf" -InputObject "${filename}(${TODOStartLineNumber}:${linenumber}): ${line}" -Append
             }
 
