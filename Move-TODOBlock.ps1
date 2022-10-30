@@ -76,8 +76,7 @@ param (
 [String] $ValidTODOBlockEndRegEx       = "^[ ]*//.*:TODO[ ]*$"
 [String] $InvalidTODOBlockEndRegEx     = "^[ ]*//.*:TODO.*:TODO[ ]*$"
 
-
-[String] $ShelfFile                  = "TODO.shelf"
+[String] $ShelfFile                    = "TODO.shelf" 
 
 #------- Functions -------------------------------------------------------------
 # Make sure that a TODO.shelf does not already exist in the -Path directory or
@@ -98,18 +97,18 @@ function Assert-NoTODOShelf {
 
 function Assert-ValidTODOBlocks {
   Assert-NoTODOShelf
-  [string[]] $TODOShelfContent
   
   # Iterate over the files in $Path directory.
   Get-ChildItem -Path $Path -Recurse -File | ForEach-Object {
     [Bool] $InTODOBlock  = $false
     $FileName            = $_
     $FileContent         = Get-Content $FileName
-    $LineNumber          = 1
+    $LineNumber          = 0
     $TODOStartLineNumber = $LineNumber
     
     # Iterate over the lines in a file.
     foreach ($Line in $FileContent) {
+      $LineNumber++
       
       # If we are inside a TODO comment block, catch unexpected syntax and 
       # the end of the TODO comment block.
@@ -139,7 +138,6 @@ function Assert-ValidTODOBlocks {
                   "comment `"//`" and is the last statement on a line."))
             }
             else {
-              echo "Valid TODO end $Line"
               $InTODOBlock = $false  
             }
           }
@@ -180,7 +178,8 @@ function Assert-ValidTODOBlocks {
           }
         }
 
-        # Unexpected closing ":TODO" keyword outside TODO comment block.
+        # Catch the end of TODO comment block. or unexpected closing ":TODO" 
+        # keyword outside TODO comment block.
         if ($Line.ToUpper().Contains($TODOBlockEnd.ToUpper())) {
           if ($InTODOBlock) {
             # Make sure the ":TODO" keyword is formatted correctly.
@@ -192,7 +191,6 @@ function Assert-ValidTODOBlocks {
                     "comment `"//`" and is the last statement on a line."))
               }
               else {
-                echo "Valid TODO end $Line"
                 $InTODOBlock = $false  
               }
             }
@@ -210,7 +208,6 @@ function Assert-ValidTODOBlocks {
           }
         }
       }
-      $LineNumber++
     }
 
     if($InTODOBlock) {
@@ -221,22 +218,80 @@ function Assert-ValidTODOBlocks {
   }
 }
 
-function Save-TODOBlocks {
-  Get-ChildItem -Path $Path -Recurse | ForEach-Object {
-    [bool] $InTODOBlock = $false
-    $FileName = $_
-    $FileContent = Get-Content $FileName
+function Move-TODOBlocks {
+  [String[]] $TODOShelfContent
+  [String[]] $NewFileContent
+  
+  # Iterate over the files in $Path directory.
+  Get-ChildItem -Path $Path -Recurse -File | ForEach-Object {
+    $NewFileContent            = @()
+    [Bool] $FirstIteration     = $true
+    [Bool] $InTODOBlock        = $false
+    [String] $FileName         = $_
+    $FileContent               = Get-Content $FileName
+    $LineNumber                = 0
+    $TODOStartLineNumber       = $LineNumber
+    $FileRelativePath          = $Filename.Substring($Path.Length)
     
-    Out-File -FilePath "${Path}\TODO.shelf" -InputObject "FILE# ${FileName}" -Append
-    $LineNumber = 1
-    $TODOStartLineNumber = $LineNumber
+    $TODOShelfContent += "FILE:<${FileRelativePath}>"
+    # Iterate over the lines in a file.
     foreach ($Line in $FileContent) {
-      # Catch the start of a TODO comment block.
-      if ($Line) {
+      $LineNumber++
 
+      # If we are inside a TODO comment block, save the TODO block information
+      if ($InTODOBlock) {
+        $TODOShelfContent += "`n($TODOStartLineNumber,$LineNumber):$Line"
+
+        # Catch the end of a TODO comment block.
+        if ($Line.ToUpper().Contains($TODOBlockEnd.ToUpper())) {
+          # Make sure the ":TODO" keyword is formatted correctly.
+          if ($Line -match $ValidTODOBlockEndRegEx) {
+            $InTODOBlock = $false
+          }
+        }
+      }
+
+      # If we are NOT inside a TODO comment block, catch unexpected syntax and 
+      # the start of a TODO comment block.
+      else {        
+
+        # Catch the start of a TODO comment block.
+        if ($Line.ToUpper().Contains($TODOBlockStart.ToUpper())) {
+          # Make sure the "TODO:"" keyword is formatted correctly.
+          if($Line -match $ValidTODOBlockStartRegEx) {            
+            $InTODOBlock = $true
+            $TODOStartLineNumber = $LineNumber
+            $TODOShelfContent += "`n($TODOStartLineNumber,$LineNumber):$Line"
+          }
+        }
+
+        if (-not ($InTODOBlock)) {
+          if ($FirstIteration) {
+            $NewFileContent += "$Line"         
+            $FirstIteration = $false
+          }
+          else {
+            $NewFileContent += "`n$Line"
+          }
+        }
+
+        # Catch the end of TODO comment block.
+        if ($Line.ToUpper().Contains($TODOBlockEnd.ToUpper())) {
+          # Make sure the ":TODO" keyword is formatted correctly.
+          if ($Line -match $ValidTODOBlockEndRegEx) {
+            $InTODOBlock = $false  
+          }
+        }
       }
     }
+
+    [String] $FileHash = (Get-FileHash ${Path}${FileRelativePath}).Hash
+    $TODOShelfContent += "`nHASH:<${FileHash}>`n`n"
+    [io.file]::WriteAllText((-join($Path, $FileRelativePath)), $NewFileContent)
   }
+
+  Write-Host "TODO Blocks moved to (${Path}\${ShelfFile})."
+  [io.file]::WriteAllText((-join($Path, "\", $ShelfFile)), $TODOShelfContent)
 }
 
 #------- Script Body -----------------------------------------------------------
@@ -245,18 +300,14 @@ Assert-Path $Path
 
 $Shelve = $true
 if ($Shelve -and $Unshelve) { 
-  Write-Error ( 
-    -join (
-      "${ScriptFileName}(0) : Error 420 : The -Shelve and -Unshelve flags can ",
-      "not be used simultaneously."
-    )
-  )
-  exit 420
+  Write-TSError `
+    -FileName   $MyInvocation.MyCommand.Source `
+    -LineNumber 0 `
+    -ErrorMsg "The -Shelve and -Unshelve flags can not be used simultaneously."
 }
 
 if ($Shelve) {
   Assert-ValidTODOBlocks
-  
-  # Save-TODOBlocks
+  Move-TODOBlocks
 }
 
