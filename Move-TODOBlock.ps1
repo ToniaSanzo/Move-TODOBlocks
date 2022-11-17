@@ -14,11 +14,15 @@
   .PARAMETER Path
   Path to the source code root directory.
 
-  .PARAMETER Unshelve
-  Use this switch when you intend to unshelve a [generated] TODO.shelf.
-
   .PARAMETER Shelve
-  Use this switch when you intend to shelve TODO blocks in source code.
+  Use this switch when you want to shelve the TODO blocks in source code.
+
+  .PARAMETER Unshelve
+  Use this switch when you want to unshelve a [generated] TODO.shelf.
+
+  .PARAMETER Force
+  Use this switch when you want to continue through warning's without prompting
+  the user.
 
   .PARAMETER Path
   The path to the root directory of the source code.
@@ -57,6 +61,12 @@ param (
   [Alias("U")]
   [switch]$Unshelve,
 
+  #"[-Force -F] : Continue through warning prompts without prompting the user."
+  [Parameter(Mandatory=$false,
+    ParameterSetName = "Default")]
+  [Alias("F")]
+  [switch]$Force,
+
   #"[-Help -H] : Invokes Get-Help response."
   [Parameter(Mandatory=$true,
     ParameterSetName = "Help")]
@@ -76,6 +86,9 @@ param (
 [String] $ValidTODOBlockEndRegEx       = "^[ ]*//.*:TODO[ ]*$"
 [String] $InvalidTODOBlockEndRegEx     = "^[ ]*//.*:TODO.*:TODO[ ]*$"
 
+[String] $TODOShelfRegex               = "^✝(?<Tag>[^✝]*)✝(?<Value>[^✝]*)✝$"
+[String] $TODOLineNumberRegex          = "\((?<LineNumber>\d+)\)"
+
 [String] $ShelfFile                    = "TODO.shelf" 
 
 #------- Functions -------------------------------------------------------------
@@ -83,21 +96,22 @@ param (
 # sub-directories. 
 function Assert-NoTODOShelf {
   Get-ChildItem -Path $Path -Recurse -File | ForEach-Object {
-    $FileName = $_
-    if ($FileName.Name -eq $ShelfFile) {
+    $FileName = $_.Name
+    if ($FileName -eq $ShelfFile) {
         Write-TSError -FileName $MyInvocation.ScriptName `
           -LineNumber $MyInvocation.ScriptLineNumber `
-          -ErrorMsg (-join("${ShelfFile} already exists, manually delete ",
-            "(${FileName}) if you would like to create a new ${ShelfFile}. ",
-            "WARNING! the data saved in (${FileName}) will be lost if you ",
+          -ErrorMsg (-join("${ShelfFile} already exists, manually delete the ",
+            "${FileName} if you would like to create a new ${ShelfFile}. ",
+            "WARNING! the data saved in the (${FileName}) will be lost if you ",
             "delete it."))
     }
   }
 }
 
+# Confirm the TODO comment blocks are formatted correctly.
 function Assert-ValidTODOBlocks {
   Assert-NoTODOShelf
-  
+
   # Iterate over the files in $Path directory.
   Get-ChildItem -Path $Path -Recurse -File | ForEach-Object {
     [Bool] $InTODOBlock  = $false
@@ -218,7 +232,8 @@ function Assert-ValidTODOBlocks {
   }
 }
 
-function Move-TODOBlocks {
+# Export TODO comment blocks from source code to the TODO.shelf file.
+function Export-TODOBlocks {
   [String[]] $TODOShelfContent
   [String[]] $NewFileContent
   
@@ -229,18 +244,18 @@ function Move-TODOBlocks {
     [Bool] $InTODOBlock        = $false
     [String] $FileName         = $_
     $FileContent               = Get-Content $FileName
-    $LineNumber                = 0
-    $TODOStartLineNumber       = $LineNumber
+    [int] $LineNumber                = 0
+    [int] $TODOStartLineNumber       = $LineNumber
     $FileRelativePath          = $Filename.Substring($Path.Length)
     
-    $TODOShelfContent += "FILE:<${FileRelativePath}>"
+    $TODOShelfContent += "✝FILE✝${FileRelativePath}✝"
     # Iterate over the lines in a file.
     foreach ($Line in $FileContent) {
       $LineNumber++
 
       # If we are inside a TODO comment block, save the TODO block information
       if ($InTODOBlock) {
-        $TODOShelfContent += "`n($TODOStartLineNumber,$LineNumber):$Line"
+        $TODOShelfContent += -join("`n✝($LineNumber)✝$Line✝")
 
         # Catch the end of a TODO comment block.
         if ($Line.ToUpper().Contains($TODOBlockEnd.ToUpper())) {
@@ -261,13 +276,13 @@ function Move-TODOBlocks {
           if($Line -match $ValidTODOBlockStartRegEx) {            
             $InTODOBlock = $true
             $TODOStartLineNumber = $LineNumber
-            $TODOShelfContent += "`n($TODOStartLineNumber,$LineNumber):$Line"
+            $TODOShelfContent += -join("`n✝($LineNumber)✝$Line✝")
           }
         }
 
         if (-not ($InTODOBlock)) {
           if ($FirstIteration) {
-            $NewFileContent += "$Line"         
+            $NewFileContent += "$Line"
             $FirstIteration = $false
           }
           else {
@@ -285,20 +300,220 @@ function Move-TODOBlocks {
       }
     }
 
-    [String] $FileHash = (Get-FileHash ${Path}${FileRelativePath}).Hash
-    $TODOShelfContent += "`nHASH:<${FileHash}>`n`n"
     [io.file]::WriteAllText((-join($Path, $FileRelativePath)), $NewFileContent)
+
+    [String] $FileHash = (Get-FileHash ${Path}${FileRelativePath}).Hash
+    $TODOShelfContent += "`n✝HASH✝${FileHash}✝`n✝☮︎`n"
   }
 
+  $TODOShelfContent += "✝☮︎"
   Write-Host "TODO Blocks moved to (${Path}\${ShelfFile})."
   [io.file]::WriteAllText((-join($Path, "\", $ShelfFile)), $TODOShelfContent)
+}
+
+# Confirm a TODO.shelf is present in the -Path directory.
+function Assert-TODOShelf {
+  $ShelfExist = $false
+  Get-ChildItem -Path $Path -File | ForEach-Object {
+    $FileName = $_.Name
+    if ($FileName -eq $ShelfFile) { $ShelfExist = $true; return }
+  }
+  if ($ShelfExist) { return }
+
+  Write-TSError -FileName $MyInvocation.ScriptName `
+    -LineNumber 0 `
+    -ErrorMsg "${ShelfFile} not found in ($Path) directory."
+}
+
+# Confirm the TODO.shelf is formatted correctly.
+function Assert-ValidTODOShelf {
+  Assert-TODOShelf
+
+  $LineNumber       = 0
+  $ExpectingFileTag = $true
+  $ShelfContent     = Get-Content $Path/$ShelfFile 
+
+  # Iterate over the content in the TODO.shelf.
+  foreach ($Line in $ShelfContent) {
+    $LineNumber++
+    
+    # Ignore blank lines.
+    if (-not ($Line -match "✝☮︎")) {
+
+      # Make sure that non-blank lines are formatted correctly.
+      if ($Line -match $TODOShelfRegex) {
+        
+        # Grab the Tag and Value group from the TODO.shelf.
+        $Match = Select-String -InputObject $Line -Pattern $TODOShelfRegex
+        $Tag, $Value = $Match.Matches[0].Groups[1..2].Value
+
+        if ($ExpectingFileTag) {
+          $ExpectingFileTag = $false
+
+          # Throw an error if the FILE tag is missing.
+          if($Tag -ne "FILE") {
+            Write-TSError -FileName "$Path/$ShelfFile" `
+              -LineNumber $LineNumber `
+              -ErrorMsg "Missing 'FILE' keyword."
+          }
+
+          $CurrentFile = "${Path}${Value}"
+          # Throw an error if the file path is invalid.
+          if (-not (Test-Path -Path $CurrentFile -PathType Leaf)) { 
+            Write-TSError -FileName "$Path/$ShelfFile" `
+              -LineNumber $LineNumber `
+              -ErrorMsg "Invalid file path."
+          }
+        }
+        else {
+          
+          # If the tag is NOT formatted like a LINENUMBER tag.
+          if (-not ($Tag -match $TODOLineNumberRegex)) { 
+            $ExpectingFileTag = $true
+
+            # Throw an error if the HASH tag is missing.
+            if($Tag -ne "HASH") {
+              Write-TSError -FileName "$Path/$ShelfFile" `
+                -LineNumber $LineNumber `
+                -ErrorMsg "Invalid LINENUMBER or HASH tag."
+            }
+
+            $CurrentFileHash = (Get-FileHash $CurrentFile).Hash
+            # Check if the current file has been modified since the previous 
+            # unshelve.
+            if ($Value -ne $CurrentFileHash) {
+
+              # Continue without prompting, if the user included the -Force 
+              # switch.
+              if (-not $Force) {
+
+                Write-Host (-join("`nWarning! $CurrentFile appears to have been ",
+                  "modified.`nWould you like to continue with the unshelve?")) `
+                  -ForegroundColor Red -NoNewline
+
+                # Prompt user if they would like to continue.
+                do {
+                  $Continue = Read-Host -Prompt " [y|n]" 
+                } 
+                until ($Continue -eq "y" -or $Continue -eq "n")
+  
+                # Exit at the request of the user.
+                if ($Continue -eq "n") { exit 0 }
+              }
+            }
+          }
+        }
+      }
+      else {
+        Write-TSError -FileName "$Path/$ShelfFile" `
+          -LineNumber $LineNumber `
+          -ErrorMsg "Line $LineNumber in TODO.shelf not formatted correctly."
+      }
+    }
+  }
+}
+
+# Write TODO Blocks to a file.
+function Write-TODOBlocksToFile {
+  param (
+    [string] $FilePath,
+    $TODOBlocks
+  )
+  $PrevFileContent = Get-Content $FilePath
+
+  $TODOBlockIdx = 0
+  $CurrLine = 0
+  $PrevLineCount = 0
+  $NewFileContent = @()
+  foreach ($Line in $PrevFileContent) {
+    
+    $CurrLine++
+
+    while ($CurrLine -eq $TODOBlocks[$TODOBlockIdx].LineNumber) {
+      $TODOBlockLine = $TODOBlocks[$TODOBlockIdx++].Value
+      $NewFileContent += $TODOBlockLine + "`n"
+      $CurrLine++
+    }
+
+    
+    $PrevLineCount++
+    if($PrevLineCount -eq $PrevFileContent.Length) {
+      $NewFileContent += $Line  + "`n"
+    }
+    else {
+      $NewFileContent += $Line.Substring(0, $Line.Length - 1)  + "`n"
+    }
+  }
+
+  while ($TODOBlockIdx -lt $TODOBlocks.Length) {
+    $Line = $TODOBlocks[$TODOBlockIdx++].Value
+    $NewFileContent += $Line + "`n"
+  }
+
+  $LineCount = 0;
+  foreach ($Line in $NewFileContent) {
+    if($LineCount++ -eq 0) {
+      [io.file]::WriteAllText($FilePath, $Line)
+    }
+    elseif($LineCount -eq $NewFileContent.Length) {
+      [io.file]::AppendAllText($FilePath, $Line.Substring(0,$Line.Length - 1))
+    }
+    else {
+      [io.file]::AppendAllText($FilePath, $Line)
+    }
+  }
+}
+
+function Import-TODOBlocks {
+  $ExpectingFileTag    = $true
+  $ShelfContent        = Get-Content "$Path\$ShelfFile"
+  $TODOBlockCollection = @()
+
+  # Iterate over the content in the TODO.shelf.
+  foreach ($Line in $ShelfContent) {
+
+    # Ignore blank lines.
+    if (-not ($Line -match "✝☮︎")) {
+
+      # Grab the Tag and Value group from the TODO.shelf.
+      $Match = Select-String -InputObject $Line -Pattern $TODOShelfRegex
+      $Tag, $Value = $Match.Matches[0].Groups[1..2].Value
+
+      if ($ExpectingFileTag) {
+        $ExpectingFileTag = $false
+
+        $CurrentFile = "${Path}${Value}"
+      }
+      else {
+              
+        # If the tag is a LINENUMBER tag.
+        if ($Tag -match $TODOLineNumberRegex) {
+          $TagMatch = `
+            Select-String -InputObject $Tag -Pattern $TODOLineNumberRegex
+          $LineNumber = $TagMatch.Matches[0].Groups[1].Value
+                  
+          $TODOBlockCollection += [PSCustomObject]@{
+            LineNumber = $LineNumber
+            Value = $Value
+          }
+        }
+        else {
+          Write-TODOBlocksToFile -FilePath $CurrentFile `
+            -TODOBlocks $TODOBlockCollection 
+          $TODOBlockCollection = @()
+          $ExpectingFileTag = $true
+        }
+      }
+    }
+  } 
+
+  Remove-Item $Path/$ShelfFile
 }
 
 #------- Script Body -----------------------------------------------------------
 Assert-Help $MyInvocation.MyCommand.Source
 Assert-Path $Path
 
-$Shelve = $true
 if ($Shelve -and $Unshelve) { 
   Write-TSError `
     -FileName   $MyInvocation.MyCommand.Source `
@@ -308,6 +523,15 @@ if ($Shelve -and $Unshelve) {
 
 if ($Shelve) {
   Assert-ValidTODOBlocks
-  Move-TODOBlocks
+  Export-TODOBlocks
+}
+elseif ($Unshelve) {
+  Assert-ValidTODOShelf
+  Import-TODOBlocks
+}
+else {
+  Write-Host (-join("Warning! no-operations done. Specify whether the ",
+    "[-Shelve] or [-Unshelve] operations should be executed.")) `
+    -ForegroundColor Yellow
 }
 
