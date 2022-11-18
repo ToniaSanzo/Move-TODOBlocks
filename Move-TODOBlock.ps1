@@ -389,8 +389,9 @@ function Assert-ValidTODOShelf {
               # switch.
               if (-not $Force) {
 
-                Write-Host (-join("`nWarning! $CurrentFile appears to have been ",
-                  "modified.`nWould you like to continue with the unshelve?")) `
+                Write-Host (-join("`nWarning! $CurrentFile appears to have ",
+                  "been modified.`nWould you like to continue with the ",
+                  "unshelve?")) `
                   -ForegroundColor Red -NoNewline
 
                 # Prompt user if they would like to continue.
@@ -440,10 +441,14 @@ function Write-TODOBlocksToFile {
     $NewFileContent += $Line + "`n"
   }
 
-  if ($TODOBlockIdx -lt $TODOBlocks.Length) { $NewFileContent += "`n" }
   while ($TODOBlockIdx -lt $TODOBlocks.Length) {
-    $Line = $TODOBlocks[$TODOBlockIdx++].Value
-    $NewFileContent += $Line + "`n"
+    if(($NewFileContent.Length + 1) -eq $TODOBlocks[$TODOBlockIdx].LineNumber) {
+      $Line = $TODOBlocks[$TODOBlockIdx++].Value
+      $NewFileContent += $Line + "`n"
+    }
+    else {
+      $NewFileContent += "`n"
+    }
   }
 
   $NewFileContent[$NewFileContent.Length - 1] = `
