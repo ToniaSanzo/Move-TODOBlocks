@@ -244,8 +244,8 @@ function Export-TODOBlocks {
     [Bool] $InTODOBlock        = $false
     [String] $FileName         = $_
     $FileContent               = Get-Content $FileName
-    [int] $LineNumber                = 0
-    [int] $TODOStartLineNumber       = $LineNumber
+    [int] $LineNumber          = 0
+    [int] $TODOStartLineNumber = $LineNumber
     $FileRelativePath          = $Filename.Substring($Path.Length)
     
     $TODOShelfContent += "✝FILE✝${FileRelativePath}✝"
@@ -300,7 +300,9 @@ function Export-TODOBlocks {
       }
     }
 
-    [io.file]::WriteAllText((-join($Path, $FileRelativePath)), $NewFileContent)
+    Out-File -FilePath (-join($Path, $FileRelativePath)) `
+      -InputObject $NewFileContent `
+      -NoNewline
 
     [String] $FileHash = (Get-FileHash ${Path}${FileRelativePath}).Hash
     $TODOShelfContent += "`n✝HASH✝${FileHash}✝`n✝☮︎`n"
@@ -426,42 +428,31 @@ function Write-TODOBlocksToFile {
   $PrevLineCount = 0
   $NewFileContent = @()
   foreach ($Line in $PrevFileContent) {
-    
-    $CurrLine++
 
+    $CurrLine++
     while ($CurrLine -eq $TODOBlocks[$TODOBlockIdx].LineNumber) {
       $TODOBlockLine = $TODOBlocks[$TODOBlockIdx++].Value
       $NewFileContent += $TODOBlockLine + "`n"
       $CurrLine++
     }
-
     
     $PrevLineCount++
-    if($PrevLineCount -eq $PrevFileContent.Length) {
-      $NewFileContent += $Line  + "`n"
-    }
-    else {
-      $NewFileContent += $Line.Substring(0, $Line.Length - 1)  + "`n"
-    }
+    $NewFileContent += $Line + "`n"
   }
 
+  if ($TODOBlockIdx -lt $TODOBlocks.Length) { $NewFileContent += "`n" }
   while ($TODOBlockIdx -lt $TODOBlocks.Length) {
     $Line = $TODOBlocks[$TODOBlockIdx++].Value
     $NewFileContent += $Line + "`n"
   }
 
-  $LineCount = 0;
-  foreach ($Line in $NewFileContent) {
-    if($LineCount++ -eq 0) {
-      [io.file]::WriteAllText($FilePath, $Line)
-    }
-    elseif($LineCount -eq $NewFileContent.Length) {
-      [io.file]::AppendAllText($FilePath, $Line.Substring(0,$Line.Length - 1))
-    }
-    else {
-      [io.file]::AppendAllText($FilePath, $Line)
-    }
-  }
+  $NewFileContent[$NewFileContent.Length - 1] = `
+    $NewFileContent[$NewFileContent.Length - 1].Substring(0, `
+      ($NewFileContent[$NewFileContent.Length - 1].Length) - 1)
+
+  $NewFileContent
+  Out-File -FilePath $FilePath `
+    -InputObject $NewFileContent -NoNewline
 }
 
 function Import-TODOBlocks {
