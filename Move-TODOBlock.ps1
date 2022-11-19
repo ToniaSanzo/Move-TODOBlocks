@@ -75,7 +75,62 @@ param (
 )
 
 #------- Includes --------------------------------------------------------------
-. "$PSScriptRoot\UtilityLib.ps1"
+# Utility Library - A library of commonly used functions.
+#------- Functions -------------------------------------------------------------
+# Throw a custom ts420 error.
+function Write-TSError {
+  param (
+      # FileName - Name of the file the error is being thrown in.
+      [Parameter(Mandatory=$true)] 
+      [String] $FileName, 
+      
+      # LineNumber - Line number the error is being thrown at.
+      [Parameter(Mandatory=$true)] 
+      [String] $LineNumber,
+
+      # ErrorMsg - Message to display to the user.
+      [Parameter(Mandatory=$true)] 
+      [String] $ErrorMsg
+  )
+
+  Write-Error "${FileName}(${LineNumber}): error ts420 : ${ErrorMsg}"
+  exit 420
+}
+
+# Handles if a non-standard help argument is passed to the script.
+function Assert-Help {
+  param (
+      [Parameter(Mandatory=$true)]
+      [String] $ThisScriptPath
+  )
+
+  # Assert the $ThisScriptPath argument is valid.
+  if (-not (Test-Path $ThisScriptPath)) {
+      Write-TSError `
+          -FileName   $MyInvocation.ScriptName `
+          -LineNumber $MyInvocation.ScriptLineNumber `
+          -ErrorMsg (-join("Invalid `$Path argument in Assert-Help function ",
+              "call. Call Assert-Help with a path to the current script. ",
+              "For example `"Assert-Help `$MyInvocation.MyCommand.Source`"."))
+  }
+
+  if ($Help) { Get-Help $ThisScriptPath; exit 0 }
+}
+
+# Assert that the ArgPath parameter is a valid filepath.
+function Assert-Path {
+  param (
+      [Parameter(Mandatory=$true)]
+      [String] $ArgPath
+  )
+
+  if (-not (Test-Path $ArgPath)) {
+      Write-TSError `
+          -FileName $MyInvocation.ScriptName `
+          -LineNumber $MyInvocation.ScriptLineNumber `
+          -ErrorMsg "Cannot find path (${ArgPath}) because it does not exist."
+  }
+}
 
 #------- Variables -------------------------------------------------------------
 [String] $TODOBlockStart               = "TODO:" 
@@ -300,17 +355,21 @@ function Export-TODOBlocks {
       }
     }
 
+    # Remove the TODO block comments from the source code file.
     Out-File -FilePath (-join($Path, $FileRelativePath)) `
       -InputObject $NewFileContent `
       -NoNewline
 
+    # Save the file's hash so we know if the source code has been modified since
+    # the TODO block comments were removed.
     [String] $FileHash = (Get-FileHash ${Path}${FileRelativePath}).Hash
     $TODOShelfContent += "`n✝HASH✝${FileHash}✝`n✝☮︎`n"
   }
 
+  # Save TODO block comments to the TODO.shelf file.
   $TODOShelfContent += "✝☮︎"
-  Write-Host "TODO Blocks moved to (${Path}\${ShelfFile})."
   [io.file]::WriteAllText((-join($Path, "\", $ShelfFile)), $TODOShelfContent)
+  Write-Host "TODO Blocks moved to (${Path}\${ShelfFile})."
 }
 
 # Confirm a TODO.shelf is present in the -Path directory.
@@ -422,25 +481,30 @@ function Write-TODOBlocksToFile {
     [string] $FilePath,
     $TODOBlocks
   )
+  
+  $TODOBlockIdx    = 0
+  $CurrLine        = 0
+  $PrevLineCount   = 0
+  $NewFileContent  = @()
   $PrevFileContent = Get-Content $FilePath
-
-  $TODOBlockIdx = 0
-  $CurrLine = 0
-  $PrevLineCount = 0
-  $NewFileContent = @()
+  # Combine the file's content and the file's TODO block comments.
   foreach ($Line in $PrevFileContent) {
-
     $CurrLine++
+
+    # If the $CurrLine and a TODO block comments line number matches, add the 
+    # TODO block comment to the $NewFileContent.
     while ($CurrLine -eq $TODOBlocks[$TODOBlockIdx].LineNumber) {
       $TODOBlockLine = $TODOBlocks[$TODOBlockIdx++].Value
       $NewFileContent += $TODOBlockLine + "`n"
       $CurrLine++
     }
-    
+  
     $PrevLineCount++
     $NewFileContent += $Line + "`n"
   }
 
+  # If we still have TODO block comments add them to the end of our 
+  # $NewFileContent. 
   while ($TODOBlockIdx -lt $TODOBlocks.Length) {
     if(($NewFileContent.Length + 1) -eq $TODOBlocks[$TODOBlockIdx].LineNumber) {
       $Line = $TODOBlocks[$TODOBlockIdx++].Value
@@ -451,11 +515,12 @@ function Write-TODOBlocksToFile {
     }
   }
 
+  # Remove the final lines newline character, just a little cleanup before 
+  # writing the $NewFileContent to the source code file.
   $NewFileContent[$NewFileContent.Length - 1] = `
     $NewFileContent[$NewFileContent.Length - 1].Substring(0, `
       ($NewFileContent[$NewFileContent.Length - 1].Length) - 1)
-
-  $NewFileContent
+  
   Out-File -FilePath $FilePath `
     -InputObject $NewFileContent -NoNewline
 }
@@ -482,7 +547,8 @@ function Import-TODOBlocks {
       }
       else {
               
-        # If the tag is a LINENUMBER tag.
+        # If the tag is a LINENUMBER tag continue building the current file's
+        # TODO block collection.
         if ($Tag -match $TODOLineNumberRegex) {
           $TagMatch = `
             Select-String -InputObject $Tag -Pattern $TODOLineNumberRegex
@@ -493,6 +559,9 @@ function Import-TODOBlocks {
             Value = $Value
           }
         }
+
+        # If the tag is not a LINENUMBER tag it is the HASH tag so that's our 
+        # queue to write our TODO block collection to the current file.
         else {
           Write-TODOBlocksToFile -FilePath $CurrentFile `
             -TODOBlocks $TODOBlockCollection 
@@ -503,6 +572,7 @@ function Import-TODOBlocks {
     }
   } 
 
+  # Remove the generated TODO.shelf.
   Remove-Item $Path/$ShelfFile
 }
 
@@ -510,6 +580,7 @@ function Import-TODOBlocks {
 Assert-Help $MyInvocation.MyCommand.Source
 Assert-Path $Path
 
+# Throw an error if the Shelve and Unshelve options are used at the same time.
 if ($Shelve -and $Unshelve) { 
   Write-TSError `
     -FileName   $MyInvocation.MyCommand.Source `
@@ -517,14 +588,18 @@ if ($Shelve -and $Unshelve) {
     -ErrorMsg "The -Shelve and -Unshelve flags can not be used simultaneously."
 }
 
+# Shelve - Move TODO blocks from source code to the TODO.shelf
 if ($Shelve) {
   Assert-ValidTODOBlocks
   Export-TODOBlocks
 }
+
+# Unshelve - Move TODO blocks from the TODO.shelf to source code.
 elseif ($Unshelve) {
   Assert-ValidTODOShelf
   Import-TODOBlocks
 }
+
 else {
   Write-Host (-join("Warning! no-operations done. Specify whether the ",
     "[-Shelve] or [-Unshelve] operations should be executed.")) `
