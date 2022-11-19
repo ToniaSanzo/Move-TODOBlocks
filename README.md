@@ -9,7 +9,7 @@ Move-TODOBlocks saves TODO block comments to a TODO.shelf file, and moves TODO b
 TODO Block comment example:
 
 
-`\\ TODO: A TODO block is a comment that starts with the todo keyword and ends with the todo keyword :TODO`
+`\\ TODO: A TODO block comment sits inside these TODO keywords. :TODO`
 
 
 ------------------------------------------------------------------------------------------------------------------------
