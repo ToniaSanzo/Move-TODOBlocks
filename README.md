@@ -5,7 +5,7 @@ Move-TODOBlocks is a PowerShell productivity script!
 
 
 
-Move-TODOBlocks saves TODOBlock comments to a TODO.shelf file, and moves TODOBlock comments from a TODO.shelf back to source code. 
+Move-TODOBlocks saves TODO block comments to a TODO.shelf file, and moves TODO block comments from a TODO.shelf back to source code. 
 
 
 
