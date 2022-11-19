@@ -2,4 +2,4 @@
 ![TODO-Blocks Logo](/Pictures/TODOBlocks-Logo.png?raw=true "TODO-Blocks Logo")
 Move TODO blocks is a productivity script!
 
-It saves your TODO comments, and it helps keep your projects repository clear of TODO comments!
+It saves TODO comments to a shelf file, so you don't have to pollute your codes repository with TODO comments! <3
