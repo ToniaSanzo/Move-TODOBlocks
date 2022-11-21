@@ -134,12 +134,14 @@ function Assert-Path {
 
 #------- Variables -------------------------------------------------------------
 [String] $TODOBlockStart               = "TODO:" 
-[String] $ValidTODOBlockStartRegEx     = "^[ ]*//[ ]*TODO:"
-[String] $InvalidTODOBlockStartRegEx   = "^[ ]*//[ ]*TODO:.*TODO:"
+[String] $ValidTODOBlockStartRegEx     = "^\s*//\s*TODO:"
+[String] $InvalidTODOBlockStartRegEx   = "^\s*//\s*TODO:.*TODO:"
+
+[String] $ValidTODOBlockBodyRegEx      = "^\s*//"
 
 [String] $TODOBlockEnd                 = ":TODO"
-[String] $ValidTODOBlockEndRegEx       = "^[ ]*//.*:TODO[ ]*$"
-[String] $InvalidTODOBlockEndRegEx     = "^[ ]*//.*:TODO.*:TODO[ ]*$"
+[String] $ValidTODOBlockEndRegEx       = "^\s*//.*:TODO\s*$"
+[String] $InvalidTODOBlockEndRegEx     = "^\s*//.*:TODO.*:TODO\s*$"
 
 [String] $TODOShelfRegex               = "^✝(?<Tag>[^✝]*)✝(?<Value>[^✝]*)✝$"
 [String] $TODOLineNumberRegex          = "\((?<LineNumber>\d+)\)"
@@ -190,7 +192,7 @@ function Assert-ValidTODOBlocks {
         }
 
         # Write an error if the TODO comment block does NOT start with a "//".
-        if(-not ($Line -match "^[ ]*//")) {
+        if(-not ($Line -match $ValidTODOBlockBodyRegEx)) {
           Write-TSError -FileName $FileName -LineNumber $LineNumber `
             -ErrorMsg (-join("Expected double slash comment `"//`" on line ",
               "(${LineNumber}) in TODO comment block."))
@@ -294,14 +296,15 @@ function Export-TODOBlocks {
   
   # Iterate over the files in $Path directory.
   Get-ChildItem -Path $Path -Recurse -File | ForEach-Object {
-    $NewFileContent            = @()
-    [Bool] $FirstIteration     = $true
-    [Bool] $InTODOBlock        = $false
-    [String] $FileName         = $_
-    $FileContent               = Get-Content $FileName
-    [int] $LineNumber          = 0
-    [int] $TODOStartLineNumber = $LineNumber
-    $FileRelativePath          = $Filename.Substring($Path.Length)
+    $NewFileContent                = @()
+    [Bool] $FirstIteration         = $true
+    [Bool] $InTODOBlock            = $false
+    [String] $FileName             = $_
+    $FileContent                   = Get-Content $FileName
+    [Bool] $FileContainsTODOBlocks = $false
+    [int] $LineNumber              = 0
+    [int] $TODOStartLineNumber     = $LineNumber
+    $FileRelativePath              = $Filename.Substring($Path.Length)
     
     $TODOShelfContent += "✝FILE✝${FileRelativePath}✝"
     # Iterate over the lines in a file.
@@ -330,6 +333,7 @@ function Export-TODOBlocks {
           # Make sure the "TODO:"" keyword is formatted correctly.
           if($Line -match $ValidTODOBlockStartRegEx) {            
             $InTODOBlock = $true
+            $FileContainsTODOBlocks = $true
             $TODOStartLineNumber = $LineNumber
             $TODOShelfContent += -join("`n✝($LineNumber)✝$Line✝")
           }
@@ -356,9 +360,11 @@ function Export-TODOBlocks {
     }
 
     # Remove the TODO block comments from the source code file.
-    Out-File -FilePath (-join($Path, $FileRelativePath)) `
-      -InputObject $NewFileContent `
-      -NoNewline
+    if ($FileContainsTODOBlocks) {
+      Out-File -FilePath (-join($Path, $FileRelativePath)) `
+        -InputObject $NewFileContent `
+        -NoNewline
+    }
 
     # Save the file's hash so we know if the source code has been modified since
     # the TODO block comments were removed.
