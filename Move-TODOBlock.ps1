@@ -567,11 +567,13 @@ function Import-TODOBlocks {
         }
 
         # If the tag is not a LINENUMBER tag it is the HASH tag so that's our 
-        # queue to write our TODO block collection to the current file.
+        # trigger to write our TODO block collection to the current file.
         else {
-          Write-TODOBlocksToFile -FilePath $CurrentFile `
-            -TODOBlocks $TODOBlockCollection 
-          $TODOBlockCollection = @()
+          if($TODOBlockCollection.Count -gt 0){
+            Write-TODOBlocksToFile -FilePath $CurrentFile `
+              -TODOBlocks $TODOBlockCollection 
+              $TODOBlockCollection = @()
+          }
           $ExpectingFileTag = $true
         }
       }
