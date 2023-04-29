@@ -1,15 +1,15 @@
   <#
   .SYNOPSIS
-  Shelves and unshelves TODO comment blocks in source code.
+  Shelves and unshelves TODO comment blocks.
 
   .DESCRIPTION
-  Has the option to shelve and unshelve TODO comment blocks from source code. 
+  Tool to shelve and unshelve TODO comment blocks. 
 
-  The process of "shelving" involves removing properly formatted TODO blocks in
-  source code and saving the TODO blocks in a [generated] TODO.shelf. 
+  The process of "shelving" involves moving TODO blocks from original text 
+  file(s) to a [generated] TODO.shelf. 
 
-  The process of "unshelving" involves restoring TODO blocks saved in a 
-  [generated] TODO.shelf back to source code. 
+  The process of "unshelving" involves moving TODO blocks from a [generated] 
+  TODO.shelf to original text file(s). 
 
   .PARAMETER Path
   Path to the source code root directory.
