@@ -6,7 +6,7 @@
 
 
 <br><br><div align="center">
-Move-TODOBlocks is an organization script!
+Move-TODOBlocks is an organization tool!
 </div><br><br>
 
 ## What is a TODO Block comment?
