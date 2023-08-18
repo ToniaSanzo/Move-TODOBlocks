@@ -419,7 +419,7 @@ function Assert-ValidTODOShelf {
 
           # Throw an error if the FILE tag is missing.
           if($Tag -ne "FILE") {
-            Write-TSError -FileName "$Path/$ShelfFile" `
+            Write-TSError -FileName "$Path\$ShelfFile" `
               -LineNumber $LineNumber `
               -ErrorMsg "Missing 'FILE' keyword."
           }
@@ -427,9 +427,10 @@ function Assert-ValidTODOShelf {
           $CurrentFile = "${Path}${Value}"
           # Throw an error if the file path is invalid.
           if (-not (Test-Path -Path $CurrentFile -PathType Leaf)) { 
-            Write-TSError -FileName "$Path/$ShelfFile" `
+            Write-TSError -FileName "$Path\$ShelfFile" `
               -LineNumber $LineNumber `
-              -ErrorMsg "Invalid file path."
+              -ErrorMsg (-join("Missing file! `"$CurrentFile`"... re-add the ",
+                "file or remove the file's metadata from the TODO.shelf"))
           }
         }
         else {
@@ -440,7 +441,7 @@ function Assert-ValidTODOShelf {
 
             # Throw an error if the HASH tag is missing.
             if($Tag -ne "HASH") {
-              Write-TSError -FileName "$Path/$ShelfFile" `
+              Write-TSError -FileName "$Path\$ShelfFile" `
                 -LineNumber $LineNumber `
                 -ErrorMsg "Invalid LINENUMBER or HASH tag."
             }
@@ -473,7 +474,7 @@ function Assert-ValidTODOShelf {
         }
       }
       else {
-        Write-TSError -FileName "$Path/$ShelfFile" `
+        Write-TSError -FileName "$Path\$ShelfFile" `
           -LineNumber $LineNumber `
           -ErrorMsg "Line $LineNumber in TODO.shelf not formatted correctly."
       }
