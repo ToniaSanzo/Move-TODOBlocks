@@ -109,9 +109,10 @@ function Assert-Help {
       Write-TSError `
           -FileName   $MyInvocation.ScriptName `
           -LineNumber $MyInvocation.ScriptLineNumber `
-          -ErrorMsg (-join("Invalid `$Path argument in Assert-Help function ",
-              "call. Call Assert-Help with a path to the current script. ",
-              "For example `"Assert-Help `$MyInvocation.MyCommand.Source`"."))
+          -ErrorMsg (-join("Invalid `$ThisScriptPath argument in Assert-Help ",
+              "function call. Call Assert-Help with a path to the current ",
+              "script. For example `"Assert-Help ",
+              "`$MyInvocation.MyCommand.Source`"."))
   }
 
   if ($Help) { Get-Help $ThisScriptPath; exit 0 }
@@ -614,4 +615,3 @@ else {
     "[-Shelve] or [-Unshelve] operations should be executed.")) `
     -ForegroundColor Yellow
 }
-
